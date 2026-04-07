@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.git/
+.env
+.env.*
+*.db
+*.db-journal
+packages/obsidian-plugin/
+packages/webgui/
+*.tsbuildinfo
+.DS_Store
+coverage/
+.claude/
+.mcp.json

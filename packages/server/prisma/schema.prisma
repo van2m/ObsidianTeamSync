@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -80,8 +80,8 @@ model Note {
   id       String  @id @default(uuid())
   path     String  // Relative path / 相对路径
   pathHash String  // FNV-1a hash for fast lookup
-  markdown String? // Latest markdown snapshot / 最新 Markdown 快照
-  yjsState Bytes?  // Yjs document state (binary) / Yjs 文档状态
+  markdown String? @db.LongText // Latest markdown snapshot / 最新 Markdown 快照
+  yjsState Bytes?  @db.LongBlob // Yjs document state (binary) / Yjs 文档状态
   mtime    BigInt  // Modification timestamp (ms) / 修改时间戳
   ctime    BigInt  // Creation timestamp (ms) / 创建时间戳
   size     Int     @default(0)
@@ -104,8 +104,8 @@ model Note {
 
 model NoteHistory {
   id        String   @id @default(uuid())
-  markdown  String   // Markdown snapshot at this point
-  yjsState  Bytes?   // Yjs state snapshot
+  markdown  String   @db.LongText // Markdown snapshot at this point
+  yjsState  Bytes?   @db.LongBlob // Yjs state snapshot
   createdAt DateTime @default(now())
 
   note     Note   @relation(fields: [noteId], references: [id], onDelete: Cascade)
@@ -140,7 +140,7 @@ model File {
 
 model Comment {
   id        String   @id @default(uuid())
-  content   String
+  content   String   @db.Text
   line      Int?     // Line number for inline comments / 行级评论行号
   resolved  Boolean  @default(false)
   createdAt DateTime @default(now())
@@ -159,7 +159,7 @@ model Comment {
 model Activity {
   id        String   @id @default(uuid())
   type      String   // note.created, note.updated, member.joined, etc.
-  metadata  String   @default("{}") // JSON metadata
+  metadata  String   @default("{}") @db.Text // JSON metadata
   createdAt DateTime @default(now())
 
   user    User   @relation("ActivityUser", fields: [userId], references: [id])

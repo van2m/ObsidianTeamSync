@@ -16,7 +16,10 @@ import commentRoutes from './routes/comment.js';
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: config.corsOrigins as string | string[],
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 
 // Health check

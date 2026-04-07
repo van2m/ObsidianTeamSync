@@ -1,6 +1,9 @@
 import type { ApiResponse } from '@ots/shared';
 import { useAuthStore } from '@/stores/auth-store';
 
+/** API base URL — defaults to /api for same-origin, supports cross-origin via env var */
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+
 export class ApiClientError extends Error {
   constructor(
     public code: number,
@@ -19,7 +22,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...options.headers,
   };
 
-  const res = await fetch(`/api${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   const body: ApiResponse<T> = await res.json();
 
   if (!body.status) {

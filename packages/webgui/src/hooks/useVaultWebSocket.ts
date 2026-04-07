@@ -21,7 +21,15 @@ export function useVaultWebSocket(vaultId: string | undefined) {
 
     clear();
 
-    const wsUrl = window.location.origin.replace(/^http/, 'ws') + '/api/sync';
+    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+    let wsUrl: string;
+    if (apiBase && apiBase.startsWith('http')) {
+      // Cross-origin mode: derive WS URL from API base
+      wsUrl = apiBase.replace(/^http/, 'ws').replace(/\/api$/, '') + '/api/sync';
+    } else {
+      // Same-origin mode: derive from current page origin
+      wsUrl = window.location.origin.replace(/^http/, 'ws') + '/api/sync';
+    }
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

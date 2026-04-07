@@ -13,6 +13,10 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   /** Token expiration in seconds (7 days) */
   jwtExpiresIn: 7 * 24 * 60 * 60,
+  /** CORS allowed origins (comma-separated, or '*' for all) */
+  corsOrigins: process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim())
+    : '*' as string | string[],
 } as const;
 
 if (config.jwtSecret === 'change-me-to-a-secure-random-string') {
