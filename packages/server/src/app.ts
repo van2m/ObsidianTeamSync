@@ -11,6 +11,7 @@ import teamRoutes from './routes/team.js';
 import vaultRoutes from './routes/vault.js';
 import noteRoutes from './routes/note.js';
 import activityRoutes from './routes/activity.js';
+import commentRoutes from './routes/comment.js';
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use('/api/teams', teamRoutes);
 app.use('/api/vaults', vaultRoutes);
 app.use('/api', noteRoutes);     // /api/vaults/:id/notes, /api/notes/:id
 app.use('/api', activityRoutes); // /api/vaults/:id/activity
+app.use('/api', commentRoutes);  // /api/notes/:id/comments, /api/comments/:id
 
 // Global error handler / 全局错误处理 (Q-04 fix)
 import type { Request, Response, NextFunction } from 'express';

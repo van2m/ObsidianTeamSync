@@ -1,5 +1,5 @@
 import { api } from '../api-client';
-import type { NoteInfo, NoteContent, NoteHistoryEntry, PaginatedResponse } from '@ots/shared';
+import type { NoteInfo, NoteContent, NoteHistoryEntry, PaginatedResponse, DiffResult } from '@ots/shared';
 
 export const notesApi = {
   list: (vaultId: string, page = 1, limit = 20) =>
@@ -7,8 +7,12 @@ export const notesApi = {
   create: (vaultId: string, data: { path: string; content: string }) =>
     api.post<NoteInfo>(`/vaults/${vaultId}/notes`, data),
   get: (noteId: string) => api.get<NoteContent>(`/notes/${noteId}`),
-  update: (noteId: string, data: { content: string; path?: string }) =>
+  update: (noteId: string, data: { markdown: string; path?: string }) =>
     api.put<NoteInfo>(`/notes/${noteId}`, data),
   delete: (noteId: string) => api.delete<void>(`/notes/${noteId}`),
   history: (noteId: string) => api.get<NoteHistoryEntry[]>(`/notes/${noteId}/history`),
+  diff: (noteId: string, from: string, to: string = 'current') =>
+    api.get<DiffResult>(`/notes/${noteId}/diff?from=${from}&to=${to}`),
+  rollback: (noteId: string, historyId: string) =>
+    api.post<{ id: string; mtime: number }>(`/notes/${noteId}/rollback`, { historyId }),
 };

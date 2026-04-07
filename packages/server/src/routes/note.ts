@@ -188,4 +188,148 @@ router.get('/notes/:noteId/history', requireNoteRole(Role.VIEWER), async (req: R
   });
 });
 
+/** GET /api/notes/:noteId/diff - Compare two versions / 版本对比 */
+router.get('/notes/:noteId/diff', requireNoteRole(Role.VIEWER), async (req: Request, res: Response) => {
+  try {
+    const { noteId } = req.params;
+    const fromId = req.query.from as string;
+    const toId = (req.query.to as string) || 'current';
+
+    if (!fromId) {
+      return res.status(400).json({ code: 400, status: false, message: 'from parameter required' });
+    }
+
+    // Get "from" version
+    const fromHistory = await prisma.noteHistory.findUnique({
+      where: { id: fromId },
+      include: { editor: { select: { name: true } } },
+    });
+    if (!fromHistory || fromHistory.noteId !== noteId) {
+      return res.status(404).json({ code: 404, status: false, message: 'From version not found' });
+    }
+
+    let toMarkdown: string;
+    let toVersion: { id: string; editorName: string; createdAt: string } | 'current';
+
+    if (toId === 'current') {
+      const note = await prisma.note.findUnique({ where: { id: noteId }, select: { markdown: true } });
+      toMarkdown = note?.markdown || '';
+      toVersion = 'current';
+    } else {
+      const toHistory = await prisma.noteHistory.findUnique({
+        where: { id: toId },
+        include: { editor: { select: { name: true } } },
+      });
+      if (!toHistory || toHistory.noteId !== noteId) {
+        return res.status(404).json({ code: 404, status: false, message: 'To version not found' });
+      }
+      toMarkdown = toHistory.markdown;
+      toVersion = { id: toHistory.id, editorName: toHistory.editor.name, createdAt: toHistory.createdAt.toISOString() };
+    }
+
+    // Compute diff
+    const { structuredPatch } = await import('diff');
+    const patch = structuredPatch('', '', fromHistory.markdown, toMarkdown, '', '');
+
+    const hunks = patch.hunks.map((h) => ({
+      oldStart: h.oldStart,
+      oldLines: h.oldLines,
+      newStart: h.newStart,
+      newLines: h.newLines,
+      lines: h.lines.map((line) => ({
+        type: line.startsWith('+') ? 'add' as const : line.startsWith('-') ? 'remove' as const : 'normal' as const,
+        content: line.substring(1),
+      })),
+    }));
+
+    res.json({
+      code: 0,
+      status: true,
+      message: 'ok',
+      data: {
+        hunks,
+        oldVersion: {
+          id: fromHistory.id,
+          editorName: fromHistory.editor.name,
+          createdAt: fromHistory.createdAt.toISOString(),
+        },
+        newVersion: toVersion,
+      },
+    });
+  } catch (err) {
+    console.error('Diff error:', err);
+    res.status(500).json({ code: 500, status: false, message: 'Failed to compute diff' });
+  }
+});
+
+/** POST /api/notes/:noteId/rollback - Rollback to a specific version / 回滚到指定版本 */
+router.post('/notes/:noteId/rollback', requireNoteRole(Role.EDITOR), async (req: Request, res: Response) => {
+  try {
+    const { noteId } = req.params;
+    const { historyId } = req.body as { historyId: string };
+    const userId = (req as any).user.userId;
+
+    if (!historyId) {
+      return res.status(400).json({ code: 400, status: false, message: 'historyId required' });
+    }
+
+    const historyEntry = await prisma.noteHistory.findUnique({ where: { id: historyId } });
+    if (!historyEntry || historyEntry.noteId !== noteId) {
+      return res.status(404).json({ code: 404, status: false, message: 'History version not found' });
+    }
+
+    const now = BigInt(Date.now());
+
+    // Update note markdown, clear yjsState to force Yjs rebuild
+    const note = await prisma.note.update({
+      where: { id: noteId },
+      data: {
+        markdown: historyEntry.markdown,
+        yjsState: null,
+        mtime: now,
+        lastEditorId: userId,
+      },
+      select: { id: true, vaultId: true, path: true, pathHash: true },
+    });
+
+    // Destroy active Yjs room if any
+    const { forceDestroyRoom } = await import('../collab/room-manager.js');
+    const roomKey = `${note.vaultId}:${note.pathHash}`;
+    await forceDestroyRoom(roomKey);
+
+    // Create history entry for the rollback
+    await prisma.noteHistory.create({
+      data: { noteId, markdown: historyEntry.markdown, editorId: userId },
+    });
+
+    // Activity log
+    await prisma.activity.create({
+      data: {
+        type: 'note.rolledback',
+        metadata: JSON.stringify({ noteId, notePath: note.path, rolledBackTo: historyId }),
+        userId,
+        vaultId: note.vaultId,
+      },
+    });
+
+    // Broadcast rollback notification
+    const { notifyVault } = await import('../sync/ws-server.js');
+    const { SyncAction } = await import('@ots/shared');
+    notifyVault(note.vaultId, {
+      action: SyncAction.NoteRolledBack,
+      data: { noteId, notePath: note.path, userName: (req as any).user.name },
+    });
+
+    res.json({
+      code: 0,
+      status: true,
+      message: 'ok',
+      data: { id: note.id, mtime: Number(now) },
+    });
+  } catch (err) {
+    console.error('Rollback error:', err);
+    res.status(500).json({ code: 500, status: false, message: 'Failed to rollback' });
+  }
+});
+
 export default router;

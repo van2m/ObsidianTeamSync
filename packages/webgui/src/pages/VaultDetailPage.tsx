@@ -4,9 +4,11 @@ import { ArrowLeft, FileText, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { NotificationToast } from '@/components/notifications/NotificationToast';
 import { vaultsApi } from '@/lib/api/vaults';
 import { notesApi } from '@/lib/api/notes';
 import { activityApi } from '@/lib/api/activity';
+import { useVaultWebSocket } from '@/hooks/useVaultWebSocket';
 import { formatRelativeTime } from '@/lib/utils';
 import type { VaultInfo, NoteInfo, ActivityEntry, PaginatedResponse } from '@ots/shared';
 
@@ -15,16 +17,20 @@ const activityLabels: Record<string, string> = {
   'note.updated': '更新了笔记',
   'note.deleted': '删除了笔记',
   'note.renamed': '重命名了笔记',
+  'note.rolledback': '回滚了笔记',
   'member.joined': '加入了 Vault',
   'member.left': '离开了 Vault',
   'member.role_changed': '角色已变更',
   'vault.created': '创建了 Vault',
   'comment.added': '添加了评论',
+  'comment.resolved': '解决了评论',
+  'comment.deleted': '删除了评论',
 };
 
 export function VaultDetailPage() {
   const { vaultId } = useParams<{ vaultId: string }>();
   const navigate = useNavigate();
+  useVaultWebSocket(vaultId);
   const [vault, setVault] = useState<VaultInfo | null>(null);
   const [notes, setNotes] = useState<PaginatedResponse<NoteInfo> | null>(null);
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
@@ -151,6 +157,7 @@ export function VaultDetailPage() {
           )}
         </TabsContent>
       </Tabs>
+      <NotificationToast />
     </div>
   );
 }

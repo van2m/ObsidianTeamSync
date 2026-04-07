@@ -212,6 +212,25 @@ export async function persistAllRooms(): Promise<void> {
   await Promise.all(promises);
 }
 
+/** Force destroy a room (used by rollback) — skips persistence since content will be overwritten */
+export async function forceDestroyRoom(roomKey: string): Promise<void> {
+  const room = activeRooms.get(roomKey);
+  if (!room) return;
+
+  // Notify all clients in the room to reload (send a close frame with reason)
+  for (const [client] of room.clients) {
+    if (client.readyState === 1 /* OPEN */) {
+      try {
+        client.close(4001, 'Note rolled back — please reload');
+      } catch { /* ignore close errors */ }
+    }
+  }
+  room.clients.clear();
+
+  // Don't persist — the rollback already wrote correct content
+  destroyRoom(roomKey);
+}
+
 /** Destroy a room and release resources */
 function destroyRoom(roomKey: string): void {
   const room = activeRooms.get(roomKey);

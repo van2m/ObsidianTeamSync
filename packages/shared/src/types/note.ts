@@ -34,10 +34,42 @@ export interface CommentInfo {
   noteId: string;
   content: string;
   line?: number; // Line-level comment / 行级评论
+  resolved: boolean;
   authorId: string;
   authorName: string;
+  authorAvatar?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CreateCommentRequest {
+  content: string;
+  line?: number;
+}
+
+export interface UpdateCommentRequest {
+  content?: string;
+  resolved?: boolean;
+}
+
+/** Diff result between two versions / 两个版本之间的差异结果 */
+export interface DiffResult {
+  hunks: DiffHunk[];
+  oldVersion: { id: string; editorName: string; createdAt: string };
+  newVersion: { id: string; editorName: string; createdAt: string } | 'current';
+}
+
+export interface DiffHunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: DiffLine[];
+}
+
+export interface DiffLine {
+  type: 'add' | 'remove' | 'normal';
+  content: string;
 }
 
 export interface ActivityEntry {
@@ -55,8 +87,11 @@ export type ActivityType =
   | 'note.updated'
   | 'note.deleted'
   | 'note.renamed'
+  | 'note.rolledback'
   | 'member.joined'
   | 'member.left'
   | 'member.role_changed'
   | 'vault.created'
-  | 'comment.added';
+  | 'comment.added'
+  | 'comment.resolved'
+  | 'comment.deleted';

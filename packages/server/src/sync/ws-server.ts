@@ -326,6 +326,10 @@ async function handleNoteDelete(ws: AuthenticatedSocket, msg: SyncMessage) {
 }
 
 /** Broadcast message to all connections in a vault / 向 Vault 内所有连接广播消息 */
+export function notifyVault(vaultId: string, msg: SyncMessage) {
+  broadcastToVault(vaultId, msg);
+}
+
 function broadcastToVault(vaultId: string, msg: SyncMessage, exclude?: WebSocket) {
   const conns = vaultConnections.get(vaultId);
   if (!conns) return;

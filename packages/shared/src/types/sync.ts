@@ -28,6 +28,35 @@ export enum SyncAction {
   UserOnline = 'UserOnline',
   UserOffline = 'UserOffline',
   UserCursor = 'UserCursor',
+  UserEditingFile = 'UserEditingFile',
+
+  // Comments / 评论通知
+  CommentAdded = 'CommentAdded',
+  CommentUpdated = 'CommentUpdated',
+  CommentDeleted = 'CommentDeleted',
+
+  // Version control / 版本控制
+  NoteRolledBack = 'NoteRolledBack',
+}
+
+/** User presence data / 用户在线状态数据 */
+export interface UserPresenceData {
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  editingNotePath?: string;
+}
+
+/** Comment notification data / 评论通知数据 */
+export interface CommentNotifyData {
+  commentId: string;
+  noteId: string;
+  notePath?: string;
+  authorId: string;
+  authorName: string;
+  content?: string;
+  line?: number;
+  resolved?: boolean;
 }
 
 /** Base sync message / 同步消息基础结构 */

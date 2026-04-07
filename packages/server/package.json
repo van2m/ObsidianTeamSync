@@ -25,6 +25,7 @@
     "yjs": "^13.6.0",
     "y-protocols": "^1.0.6",
     "lib0": "^0.2.98",
+    "diff": "^7.0.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {

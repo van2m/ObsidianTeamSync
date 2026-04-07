@@ -7,7 +7,11 @@ import { SyncEngine } from './core/sync-engine';
 import { VaultWatcher } from './core/vault-watcher';
 import { CollabManager } from './collab/collab-manager';
 import { createCollabExtension } from './collab/collab-extension';
+import { CommentView, COMMENT_VIEW_TYPE } from './ui/comment-view';
+import { PresenceView, PRESENCE_VIEW_TYPE } from './ui/presence-view';
+import { HistoryModal } from './ui/history-modal';
 import { OTSSettingTab, type OTSSettings, DEFAULT_SETTINGS } from './ui/settings-tab';
+import { SyncAction, type UserPresenceData, type CommentNotifyData } from '@ots/shared';
 
 export default class ObsidianTeamSyncPlugin extends Plugin {
   settings: OTSSettings = DEFAULT_SETTINGS;
@@ -32,6 +36,10 @@ export default class ObsidianTeamSyncPlugin extends Plugin {
     // Add status bar item / 添加状态栏
     const statusBarEl = this.addStatusBarItem();
     statusBarEl.setText('OTS: Disconnected');
+
+    // Register sidebar views / 注册侧边栏视图
+    this.registerView(COMMENT_VIEW_TYPE, (leaf) => new CommentView(leaf, this));
+    this.registerView(PRESENCE_VIEW_TYPE, (leaf) => new PresenceView(leaf));
 
     // Register empty collab compartment for CM6 / 注册空的协同 Compartment
     this.registerEditorExtension(this.collabCompartment.of([]));
@@ -72,6 +80,39 @@ export default class ObsidianTeamSyncPlugin extends Plugin {
         }
       },
     });
+
+    this.addCommand({
+      id: 'ots-show-comments',
+      name: 'Show comments panel',
+      callback: () => this.activateView(COMMENT_VIEW_TYPE),
+    });
+
+    this.addCommand({
+      id: 'ots-show-online-users',
+      name: 'Show online users',
+      callback: () => this.activateView(PRESENCE_VIEW_TYPE),
+    });
+
+    this.addCommand({
+      id: 'ots-show-history',
+      name: 'Show note history',
+      callback: () => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file) { new Notice('OTS: 请先打开一篇笔记'); return; }
+        // We need the noteId — fetch it via API
+        if (!this.apiClient) return;
+        this.apiClient.get(`/vaults/${this.settings.activeVaultId}/notes?page=1&limit=1&path=${encodeURIComponent(file.path)}`)
+          .then((res: any) => {
+            const notes = res.data?.items ?? res.items ?? [];
+            if (notes.length > 0) {
+              new HistoryModal(this, notes[0].id, file.path).open();
+            } else {
+              new Notice('OTS: 未找到此笔记的同步记录');
+            }
+          })
+          .catch(() => new Notice('OTS: 获取笔记信息失败'));
+      },
+    });
   }
 
   async onunload() {
@@ -110,11 +151,14 @@ export default class ObsidianTeamSyncPlugin extends Plugin {
           await this.applyRemoteDeletion(data);
         },
         onUserOnline: (data) => {
-          // TODO: Update team panel UI
-          console.log(`[OTS] User online: ${data.userName}`);
+          const presenceView = this.getPresenceView();
+          if (presenceView) presenceView.addUser(data as UserPresenceData);
+          this.updateOnlineCount(statusBarEl);
         },
         onUserOffline: (data) => {
-          console.log(`[OTS] User offline: ${data.userName}`);
+          const presenceView = this.getPresenceView();
+          if (presenceView) presenceView.removeUser(data.userId);
+          this.updateOnlineCount(statusBarEl);
         },
         onError: (err) => {
           console.error('[OTS] Sync error:', err);
@@ -245,6 +289,34 @@ export default class ObsidianTeamSyncPlugin extends Plugin {
       if (!this.app.vault.getAbstractFileByPath(current)) {
         await this.app.vault.createFolder(current);
       }
+    }
+  }
+
+  /** Activate a sidebar view */
+  private async activateView(viewType: string) {
+    const { workspace } = this.app;
+    let leaf = workspace.getLeavesOfType(viewType)[0];
+    if (!leaf) {
+      const rightLeaf = workspace.getRightLeaf(false);
+      if (rightLeaf) {
+        leaf = rightLeaf;
+        await leaf.setViewState({ type: viewType, active: true });
+      }
+    }
+    if (leaf) workspace.revealLeaf(leaf);
+  }
+
+  /** Get PresenceView instance */
+  private getPresenceView(): PresenceView | null {
+    const leaves = this.app.workspace.getLeavesOfType(PRESENCE_VIEW_TYPE);
+    return leaves.length > 0 ? (leaves[0].view as PresenceView) : null;
+  }
+
+  /** Update online user count in status bar */
+  private updateOnlineCount(statusBarEl: HTMLElement) {
+    const presenceView = this.getPresenceView();
+    if (presenceView && this.syncEngine?.isConnected) {
+      statusBarEl.setText('OTS: Connected ✓');
     }
   }
 
