@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { usePresenceStore } from '@/stores/presence-store';
 import { useNotificationStore } from '@/stores/notification-store';
@@ -10,30 +10,31 @@ import {
   type CommentNotifyData,
 } from '@ots/shared';
 
+function buildWsUrl(): string {
+  const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+  if (apiBase && apiBase.startsWith('http')) {
+    return apiBase.replace(/^http/, 'ws').replace(/\/api$/, '') + '/api/sync';
+  }
+  return window.location.origin.replace(/^http/, 'ws') + '/api/sync';
+}
+
 export function useVaultWebSocket(vaultId: string | undefined) {
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectDelayRef = useRef(1000);
+  const destroyedRef = useRef(false);
   const token = useAuthStore((s) => s.token);
   const { addUser, removeUser, updateEditing, clear } = usePresenceStore();
   const pushNotification = useNotificationStore((s) => s.push);
 
-  useEffect(() => {
-    if (!vaultId || !token) return;
+  const connect = useCallback(() => {
+    if (!vaultId || !token || destroyedRef.current) return;
 
-    clear();
-
-    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
-    let wsUrl: string;
-    if (apiBase && apiBase.startsWith('http')) {
-      // Cross-origin mode: derive WS URL from API base
-      wsUrl = apiBase.replace(/^http/, 'ws').replace(/\/api$/, '') + '/api/sync';
-    } else {
-      // Same-origin mode: derive from current page origin
-      wsUrl = window.location.origin.replace(/^http/, 'ws') + '/api/sync';
-    }
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(buildWsUrl());
     wsRef.current = ws;
 
     ws.onopen = () => {
+      reconnectDelayRef.current = 1000; // Reset on success
       ws.send(encodeSyncMessage({
         action: SyncAction.ClientAuth,
         data: { token, vaultId, deviceId: 'webgui-' + Date.now(), clientVersion: '0.1.0' },
@@ -84,12 +85,36 @@ export function useVaultWebSocket(vaultId: string | undefined) {
       }
     };
 
-    ws.onclose = () => {
-      clear();
+    ws.onerror = () => {
+      // Ensure onclose fires for reconnect on connection failure
+      ws.close();
     };
 
+    ws.onclose = () => {
+      clear();
+      // Auto-reconnect with exponential backoff
+      if (!destroyedRef.current) {
+        reconnectTimerRef.current = setTimeout(() => {
+          reconnectTimerRef.current = null;
+          connect();
+        }, reconnectDelayRef.current);
+        reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 2, 30000);
+      }
+    };
+  }, [vaultId, token]);
+
+  useEffect(() => {
+    destroyedRef.current = false;
+    clear();
+    connect();
+
     return () => {
-      ws.close();
+      destroyedRef.current = true;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      wsRef.current?.close();
       wsRef.current = null;
       clear();
     };

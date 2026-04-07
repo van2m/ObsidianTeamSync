@@ -30,6 +30,31 @@ interface AuthenticatedSocket extends WebSocket {
 /** Map: vaultId -> Set of connected sockets / Vault 到连接 Socket 的映射 */
 const vaultConnections = new Map<string, Set<AuthenticatedSocket>>();
 
+/** Throttle history snapshots: key = `noteId:userId`, value = last snapshot timestamp */
+const historyThrottle = new Map<string, number>();
+
+/** Per-note mutex to prevent TOCTOU between NoteModify and Yjs room operations */
+const noteLocks = new Map<string, Promise<void>>();
+async function withNoteLock(key: string, fn: () => Promise<void>): Promise<void> {
+  const prev = noteLocks.get(key) ?? Promise.resolve();
+  const current = prev.then(fn, fn); // Always run, even if prev rejected
+  noteLocks.set(key, current);
+  await current;
+  if (noteLocks.get(key) === current) noteLocks.delete(key);
+}
+const HISTORY_THROTTLE_MS = 30000; // 30 seconds
+
+// Periodically clean stale throttle entries to prevent memory leak
+const throttleCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [key, ts] of historyThrottle) {
+    if (now - ts > HISTORY_THROTTLE_MS * 2) {
+      historyThrottle.delete(key);
+    }
+  }
+}, 60000);
+throttleCleanupTimer.unref(); // Don't block process exit
+
 export function setupSyncServer(server: Server) {
   const wss = new WebSocketServer({ server, path: '/api/sync' });
 
@@ -61,10 +86,14 @@ export function setupSyncServer(server: Server) {
         }
       } catch (err) {
         console.error('Sync message error:', err);
-        ws.send(encodeSyncMessage({
-          action: SyncAction.AuthResult,
-          data: { code: 500, status: false, message: 'Internal error' },
-        }));
+        try {
+          if (ws.readyState === 1 /* OPEN */) {
+            ws.send(encodeSyncMessage({
+              action: SyncAction.AuthResult,
+              data: { code: 500, status: false, message: 'Internal error' },
+            }));
+          }
+        } catch { /* ignore send errors in error handler */ }
       }
     });
 
@@ -253,58 +282,64 @@ async function handleNoteModify(ws: AuthenticatedSocket, msg: SyncMessage) {
     mtime: number;
   };
 
+  if (typeof notePath !== 'string' || typeof content !== 'string') return;
+
   const hash = pathHash(notePath);
-  const now = BigInt(mtime || Date.now());
+  const vaultId = ws.vaultId;
+  const userId = ws.userId;
+  const roomKey = `${vaultId}:${hash}`;
 
-  // If note has an active Yjs room, skip file-level sync — Yjs handles it
-  // 如果笔记有活跃 Yjs 房间，跳过文件级同步 — Yjs 负责处理
-  const roomKey = `${ws.vaultId}:${hash}`;
-  const activeRoom = getRoomByKey(roomKey);
-  if (activeRoom) {
-    // Note is being collaboratively edited; ignore file-level NoteModify
-    // to avoid destroying CRDT history. The collab session will persist
-    // the final state when the room is destroyed.
-    return;
-  }
+  // Use per-note lock to prevent TOCTOU race with Yjs room operations
+  await withNoteLock(roomKey, async () => {
+    // Check inside lock to prevent race
+    if (getRoomByKey(roomKey)) return; // Yjs room active, skip
 
-  const note = await prisma.note.upsert({
-    where: { vaultId_pathHash: { vaultId: ws.vaultId, pathHash: hash } },
-    update: {
-      markdown: content,
-      mtime: now,
-      size: Buffer.byteLength(content, 'utf8'),
-      lastEditorId: ws.userId,
-      deleted: false,
-    },
-    create: {
-      path: notePath,
-      pathHash: hash,
-      markdown: content,
-      mtime: now,
-      ctime: now,
-      size: Buffer.byteLength(content, 'utf8'),
-      vaultId: ws.vaultId,
-      lastEditorId: ws.userId,
-    },
-  });
+    const now = BigInt(mtime || Date.now());
 
-  // Save history snapshot / 保存历史快照 (L-02 fix)
-  await prisma.noteHistory.create({
-    data: { noteId: note.id, markdown: content, editorId: ws.userId },
-  });
+    const note = await prisma.note.upsert({
+      where: { vaultId_pathHash: { vaultId, pathHash: hash } },
+      update: {
+        markdown: content,
+        mtime: now,
+        size: Buffer.byteLength(content, 'utf8'),
+        lastEditorId: userId,
+        deleted: false,
+      },
+      create: {
+        path: notePath,
+        pathHash: hash,
+        markdown: content,
+        mtime: now,
+        ctime: now,
+        size: Buffer.byteLength(content, 'utf8'),
+        vaultId,
+        lastEditorId: userId,
+      },
+    });
 
-  // Broadcast to other devices / 广播给其他设备
-  broadcastToVault(ws.vaultId, {
-    action: SyncAction.NoteSyncModify,
-    data: {
-      path: notePath,
-      pathHash: hash,
-      mtime: Number(now),
-      content,
-      editorId: ws.userId,
-      editorName: ws.userName,
-    },
-  }, ws);
+    // Save history snapshot with throttle (30s per user per note)
+    const throttleKey = `${note.id}:${userId}`;
+    const lastSnapshot = historyThrottle.get(throttleKey) || 0;
+    if (Date.now() - lastSnapshot >= HISTORY_THROTTLE_MS) {
+      await prisma.noteHistory.create({
+        data: { noteId: note.id, markdown: content, editorId: userId },
+      });
+      historyThrottle.set(throttleKey, Date.now());
+    }
+
+    // Broadcast to other devices
+    broadcastToVault(vaultId, {
+      action: SyncAction.NoteSyncModify,
+      data: {
+        path: notePath,
+        pathHash: hash,
+        mtime: Number(now),
+        content,
+        editorId: userId,
+        editorName: ws.userName,
+      },
+    }, ws);
+  }); // end withNoteLock
 }
 
 async function handleNoteDelete(ws: AuthenticatedSocket, msg: SyncMessage) {

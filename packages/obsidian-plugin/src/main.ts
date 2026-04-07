@@ -74,6 +74,9 @@ export default class ObsidianTeamSyncPlugin extends Plugin {
       id: 'ots-reconnect',
       name: 'Reconnect to server',
       callback: () => {
+        // Clean up all old instances to prevent leaks
+        this.collabManager?.destroy();
+        this.vaultWatcher?.stop();
         this.syncEngine?.disconnect();
         if (this.settings.serverUrl && this.settings.token) {
           this.initializeSync(statusBarEl);

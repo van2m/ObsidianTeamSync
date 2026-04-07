@@ -22,13 +22,17 @@ export function NoteDetailPage() {
   const [loading, setLoading] = useState(true);
   const [rolling, setRolling] = useState(false);
 
+  const [error, setError] = useState('');
+
   const loadData = () => {
     if (!noteId) return;
+    setError('');
     Promise.all([notesApi.get(noteId), notesApi.history(noteId)])
       .then(([n, h]) => {
         setNote(n);
         setHistory(h);
       })
+      .catch((err) => setError(err.message || '加载失败'))
       .finally(() => setLoading(false));
   };
 
@@ -36,8 +40,12 @@ export function NoteDetailPage() {
 
   const handleDiff = async (historyId: string) => {
     if (!noteId) return;
-    const result = await notesApi.diff(noteId, historyId, 'current');
-    setDiffResult(result);
+    try {
+      const result = await notesApi.diff(noteId, historyId, 'current');
+      setDiffResult(result);
+    } catch (err: any) {
+      setError(err.message || '获取差异失败');
+    }
   };
 
   const handleRollback = async (historyId: string) => {
@@ -49,12 +57,15 @@ export function NoteDetailPage() {
       setDiffResult(null);
       setSelectedHistory(null);
       loadData();
+    } catch (err: any) {
+      setError(err.message || '回滚失败');
     } finally {
       setRolling(false);
     }
   };
 
   if (loading) return <div className="text-muted-foreground">加载中...</div>;
+  if (error) return <div className="text-destructive">{error}</div>;
   if (!note) return <div className="text-muted-foreground">笔记不存在</div>;
 
   const displayContent = selectedHistory?.markdown ?? note.markdown;

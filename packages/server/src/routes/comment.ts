@@ -121,6 +121,7 @@ router.get('/notes/:noteId/comments', requireNoteRole(Role.VIEWER), async (req, 
       where,
       include: { author: { select: { name: true, avatar: true } } },
       orderBy: { createdAt: 'asc' },
+      take: 200, // Cap at 200 comments per note
     });
 
     res.json({
@@ -147,7 +148,7 @@ router.get('/notes/:noteId/comments', requireNoteRole(Role.VIEWER), async (req, 
 });
 
 /** PUT /api/comments/:commentId — Update comment content */
-router.put('/comments/:commentId', authMiddleware, async (req, res) => {
+router.put('/comments/:commentId', async (req, res) => {
   try {
     const { commentId } = req.params;
     const { content } = req.body as { content: string };
@@ -217,11 +218,15 @@ router.put('/comments/:commentId', authMiddleware, async (req, res) => {
 });
 
 /** PATCH /api/comments/:commentId/resolve — Toggle resolved status */
-router.patch('/comments/:commentId/resolve', authMiddleware, async (req, res) => {
+router.patch('/comments/:commentId/resolve', async (req, res) => {
   try {
     const { commentId } = req.params;
     const { resolved } = req.body as { resolved: boolean };
     const userId = (req as any).user.userId;
+
+    if (typeof resolved !== 'boolean') {
+      return res.status(400).json({ code: 400, status: false, message: 'resolved must be a boolean' });
+    }
 
     const comment = await prisma.comment.findUnique({
       where: { id: commentId },
@@ -288,7 +293,7 @@ router.patch('/comments/:commentId/resolve', authMiddleware, async (req, res) =>
 });
 
 /** DELETE /api/comments/:commentId — Delete comment */
-router.delete('/comments/:commentId', authMiddleware, async (req, res) => {
+router.delete('/comments/:commentId', async (req, res) => {
   try {
     const { commentId } = req.params;
     const userId = (req as any).user.userId;

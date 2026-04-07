@@ -108,10 +108,13 @@ router.get('/:teamId', async (req: Request, res: Response) => {
     status: true,
     message: 'ok',
     data: {
-      id: team.id,
-      name: team.name,
-      inviteCode: team.inviteCode,
-      createdAt: team.createdAt.toISOString(),
+      team: {
+        id: team.id,
+        name: team.name,
+        inviteCode: team.inviteCode,
+        createdAt: team.createdAt.toISOString(),
+        memberCount: team.members.length,
+      },
       members: team.members.map((m) => ({
         id: m.id,
         userId: m.user.id,
@@ -121,7 +124,6 @@ router.get('/:teamId', async (req: Request, res: Response) => {
         role: m.role,
         joinedAt: m.joinedAt.toISOString(),
       })),
-      vaults: team.vaults,
     },
   });
 });
@@ -212,6 +214,18 @@ router.patch('/:teamId/members/:memberId', async (req: Request, res: Response) =
   if (target.role === Role.OWNER) {
     res.status(403).json({ code: 403, status: false, message: 'Cannot change owner role' });
     return;
+  }
+
+  // ADMIN can only modify EDITOR/VIEWER, and cannot set anyone to ADMIN
+  if (requester.role === 'ADMIN') {
+    if (target.role === 'ADMIN') {
+      res.status(403).json({ code: 403, status: false, message: 'ADMIN cannot modify other ADMINs' });
+      return;
+    }
+    if (parsed.data.role === 'ADMIN') {
+      res.status(403).json({ code: 403, status: false, message: 'Only OWNER can promote to ADMIN' });
+      return;
+    }
   }
 
   await prisma.teamMember.update({

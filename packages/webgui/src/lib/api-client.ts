@@ -22,8 +22,19 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...options.headers,
   };
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  const body: ApiResponse<T> = await res.json();
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch {
+    throw new ApiClientError(0, '网络连接失败，请检查网络');
+  }
+
+  let body: ApiResponse<T>;
+  try {
+    body = await res.json();
+  } catch {
+    throw new ApiClientError(res.status, `服务器返回异常 (${res.status})`);
+  }
 
   if (!body.status) {
     if (body.code === 401) {

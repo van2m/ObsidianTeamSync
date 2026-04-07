@@ -78,8 +78,8 @@ model Vault {
 
 model Note {
   id       String  @id @default(uuid())
-  path     String  // Relative path / 相对路径
-  pathHash String  // FNV-1a hash for fast lookup
+  path     String  @db.VarChar(512) // Relative path / 相对路径
+  pathHash String  @db.VarChar(8)   // FNV-1a hash for fast lookup
   markdown String? @db.LongText // Latest markdown snapshot / 最新 Markdown 快照
   yjsState Bytes?  @db.LongBlob // Yjs document state (binary) / Yjs 文档状态
   mtime    BigInt  // Modification timestamp (ms) / 修改时间戳
@@ -120,8 +120,8 @@ model NoteHistory {
 
 model File {
   id        String   @id @default(uuid())
-  path      String   // Relative path
-  pathHash  String
+  path      String   @db.VarChar(512) // Relative path
+  pathHash  String   @db.VarChar(8)
   size      Int
   mimeType  String?
   mtime     BigInt

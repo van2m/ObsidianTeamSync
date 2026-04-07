@@ -47,6 +47,7 @@ function startPeriodicPersist() {
       }
     }
   }, PERIODIC_PERSIST_MS);
+  periodicTimer.unref(); // Don't block process exit
 }
 
 function stopPeriodicPersist() {
@@ -97,8 +98,13 @@ async function createRoom(vaultId: string, pathHash: string, roomKey: string): P
   const doc = new Y.Doc();
 
   if (note.yjsState && note.yjsState.length > 0) {
-    // Restore from persisted Yjs state
-    Y.applyUpdate(doc, new Uint8Array(note.yjsState));
+    try {
+      Y.applyUpdate(doc, new Uint8Array(note.yjsState));
+    } catch (err) {
+      console.error('Corrupted yjsState, falling back to markdown:', err);
+      const ytext = doc.getText('content');
+      if (note.markdown) ytext.insert(0, note.markdown);
+    }
   } else if (note.markdown) {
     // Initialize Y.Text from existing markdown (Phase 1 migration)
     const ytext = doc.getText('content');
@@ -180,8 +186,19 @@ export function getRoomByKey(roomKey: string): CollabRoom | undefined {
   return activeRooms.get(roomKey);
 }
 
-/** Persist a room's Yjs state to the database */
+/** Per-room persist lock to prevent concurrent writes */
+const persistLocks = new Map<string, Promise<void>>();
+
+/** Persist a room's Yjs state to the database (serialized per room) */
 export async function persistRoom(roomKey: string): Promise<void> {
+  const prev = persistLocks.get(roomKey) ?? Promise.resolve();
+  const current = prev.then(() => doPersist(roomKey), () => doPersist(roomKey));
+  persistLocks.set(roomKey, current);
+  await current;
+  if (persistLocks.get(roomKey) === current) persistLocks.delete(roomKey);
+}
+
+async function doPersist(roomKey: string): Promise<void> {
   const room = activeRooms.get(roomKey);
   if (!room || !room.dirty) return;
 

@@ -25,7 +25,8 @@ export function TeamsPage() {
   const [joinOpen, setJoinOpen] = useState(false);
   const [teamName, setTeamName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
-  const [error, setError] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [joinError, setJoinError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const loadTeams = () => {
@@ -36,7 +37,7 @@ export function TeamsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setCreateError('');
     setSubmitting(true);
     try {
       await teamsApi.create({ name: teamName });
@@ -44,7 +45,7 @@ export function TeamsPage() {
       setTeamName('');
       loadTeams();
     } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : '创建失败');
+      setCreateError(err instanceof ApiClientError ? err.message : '创建失败');
     } finally {
       setSubmitting(false);
     }
@@ -52,7 +53,7 @@ export function TeamsPage() {
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setJoinError('');
     setSubmitting(true);
     try {
       await teamsApi.join({ inviteCode });
@@ -60,7 +61,7 @@ export function TeamsPage() {
       setInviteCode('');
       loadTeams();
     } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : '加入失败');
+      setJoinError(err instanceof ApiClientError ? err.message : '加入失败');
     } finally {
       setSubmitting(false);
     }
@@ -73,7 +74,7 @@ export function TeamsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">我的团队</h1>
         <div className="flex gap-2">
-          <Dialog open={joinOpen} onOpenChange={(o) => { setJoinOpen(o); setError(''); }}>
+          <Dialog open={joinOpen} onOpenChange={(o) => { setJoinOpen(o); setJoinError(''); }}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm">
                 <LogIn className="mr-1 h-3 w-3" />
@@ -87,7 +88,7 @@ export function TeamsPage() {
                   <DialogDescription>输入邀请码加入现有团队</DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
-                  {error && <div className="mb-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
+                  {joinError && <div className="mb-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{joinError}</div>}
                   <Label htmlFor="inviteCode">邀请码</Label>
                   <Input id="inviteCode" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} required className="mt-2" />
                 </div>
@@ -98,7 +99,7 @@ export function TeamsPage() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={createOpen} onOpenChange={(o) => { setCreateOpen(o); setError(''); }}>
+          <Dialog open={createOpen} onOpenChange={(o) => { setCreateOpen(o); setCreateError(''); }}>
             <DialogTrigger asChild>
               <Button size="sm">
                 <Plus className="mr-1 h-3 w-3" />
@@ -112,7 +113,7 @@ export function TeamsPage() {
                   <DialogDescription>创建一个新的团队来协作</DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
-                  {error && <div className="mb-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
+                  {createError && <div className="mb-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{createError}</div>}
                   <Label htmlFor="teamName">团队名称</Label>
                   <Input id="teamName" value={teamName} onChange={(e) => setTeamName(e.target.value)} required className="mt-2" />
                 </div>

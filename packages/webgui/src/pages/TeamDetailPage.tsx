@@ -67,8 +67,13 @@ export function TeamDetailPage() {
 
   const handleRemoveMember = async (memberId: string) => {
     if (!teamId) return;
-    await teamsApi.removeMember(teamId, memberId);
-    loadTeam();
+    if (!confirm('确定要移除该成员吗？')) return;
+    try {
+      await teamsApi.removeMember(teamId, memberId);
+      loadTeam();
+    } catch (err: any) {
+      console.error('Remove member failed:', err);
+    }
   };
 
   const handleChangeRole = async (memberId: string, role: Role) => {
@@ -143,7 +148,9 @@ export function TeamDetailPage() {
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7"
-                        title="更改角色"
+                        title={`当前: ${roleLabels[m.role]} → 点击切换为 ${
+                          m.role === Role.ADMIN ? '编辑者' : m.role === Role.EDITOR ? '查看者' : '编辑者'
+                        }`}
                         onClick={() => {
                           const nextRole = m.role === Role.ADMIN ? Role.EDITOR
                             : m.role === Role.EDITOR ? Role.VIEWER

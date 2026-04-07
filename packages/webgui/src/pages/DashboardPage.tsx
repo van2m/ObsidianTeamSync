@@ -12,18 +12,20 @@ export function DashboardPage() {
   const [teams, setTeams] = useState<TeamInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [error, setError] = useState('');
+
   useEffect(() => {
     Promise.all([vaultsApi.list(), teamsApi.list()])
       .then(([v, t]) => {
         setVaults(v);
         setTeams(t);
       })
+      .catch((err) => setError(err.message || '加载失败'))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return <div className="text-muted-foreground">加载中...</div>;
-  }
+  if (loading) return <div className="text-muted-foreground">加载中...</div>;
+  if (error) return <div className="text-destructive">{error}</div>;
 
   return (
     <div className="space-y-6">

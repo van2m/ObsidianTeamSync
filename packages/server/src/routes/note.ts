@@ -15,9 +15,15 @@ router.get('/vaults/:vaultId/notes', requireVaultRole(Role.VIEWER), async (req: 
   const page = parseInt(req.query.page as string) || 1;
   const pageSize = Math.min(parseInt(req.query.pageSize as string) || 50, 100);
 
+  const pathFilter = req.query.path as string | undefined;
+  const where: any = { vaultId, deleted: false };
+  if (pathFilter) {
+    where.path = pathFilter; // Exact match for note lookup by path
+  }
+
   const [notes, total] = await Promise.all([
     prisma.note.findMany({
-      where: { vaultId, deleted: false },
+      where,
       select: {
         id: true,
         path: true,
@@ -32,7 +38,7 @@ router.get('/vaults/:vaultId/notes', requireVaultRole(Role.VIEWER), async (req: 
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.note.count({ where: { vaultId, deleted: false } }),
+    prisma.note.count({ where }),
   ]);
 
   res.json({
@@ -90,6 +96,17 @@ router.put('/notes/:noteId', requireNoteRole(Role.EDITOR), async (req: Request, 
   if (typeof markdown !== 'string') {
     res.status(400).json({ code: 400, status: false, message: 'markdown is required' });
     return;
+  }
+
+  // Check for active Yjs room — reject if note is being collaboratively edited
+  const existingNote = await prisma.note.findUnique({ where: { id: req.params.noteId }, select: { vaultId: true, pathHash: true } });
+  if (existingNote) {
+    const { getRoomByKey } = await import('../collab/room-manager.js');
+    const roomKey = `${existingNote.vaultId}:${existingNote.pathHash}`;
+    if (getRoomByKey(roomKey)) {
+      res.status(409).json({ code: 409, status: false, message: '笔记正在协同编辑中，请通过编辑器修改' });
+      return;
+    }
   }
 
   const now = BigInt(Date.now());
@@ -167,9 +184,18 @@ router.delete('/notes/:noteId', requireNoteRole(Role.EDITOR), async (req: Reques
 
 /** GET /api/notes/:noteId/history - Get note history / 获取笔记历史 */
 router.get('/notes/:noteId/history', requireNoteRole(Role.VIEWER), async (req: Request, res: Response) => {
+  const includeContent = req.query.content === 'true';
+
   const history = await prisma.noteHistory.findMany({
     where: { noteId: req.params.noteId },
-    include: { editor: { select: { id: true, name: true } } },
+    select: {
+      id: true,
+      markdown: includeContent, // Only include full content when explicitly requested
+      createdAt: true,
+      noteId: true,
+      editorId: true,
+      editor: { select: { id: true, name: true } },
+    },
     orderBy: { createdAt: 'desc' },
     take: 50,
   });
@@ -180,7 +206,8 @@ router.get('/notes/:noteId/history', requireNoteRole(Role.VIEWER), async (req: R
     message: 'ok',
     data: history.map((h) => ({
       id: h.id,
-      markdown: h.markdown,
+      noteId: h.noteId,
+      ...(includeContent ? { markdown: (h as any).markdown } : {}),
       editorId: h.editor.id,
       editorName: h.editor.name,
       createdAt: h.createdAt.toISOString(),
@@ -280,8 +307,22 @@ router.post('/notes/:noteId/rollback', requireNoteRole(Role.EDITOR), async (req:
 
     const now = BigInt(Date.now());
 
-    // Update note markdown, clear yjsState to force Yjs rebuild
-    const note = await prisma.note.update({
+    // Get note info first for room key
+    const note = await prisma.note.findUnique({
+      where: { id: noteId },
+      select: { id: true, vaultId: true, path: true, pathHash: true },
+    });
+    if (!note) {
+      return res.status(404).json({ code: 404, status: false, message: 'Note not found' });
+    }
+
+    // Destroy active Yjs room FIRST to prevent persist from overwriting rollback
+    const { forceDestroyRoom } = await import('../collab/room-manager.js');
+    const roomKey = `${note.vaultId}:${note.pathHash}`;
+    await forceDestroyRoom(roomKey);
+
+    // Then update note markdown, clear yjsState to force Yjs rebuild
+    await prisma.note.update({
       where: { id: noteId },
       data: {
         markdown: historyEntry.markdown,
@@ -289,13 +330,7 @@ router.post('/notes/:noteId/rollback', requireNoteRole(Role.EDITOR), async (req:
         mtime: now,
         lastEditorId: userId,
       },
-      select: { id: true, vaultId: true, path: true, pathHash: true },
     });
-
-    // Destroy active Yjs room if any
-    const { forceDestroyRoom } = await import('../collab/room-manager.js');
-    const roomKey = `${note.vaultId}:${note.pathHash}`;
-    await forceDestroyRoom(roomKey);
 
     // Create history entry for the rollback
     await prisma.noteHistory.create({

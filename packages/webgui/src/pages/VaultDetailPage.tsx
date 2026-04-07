@@ -35,6 +35,7 @@ export function VaultDetailPage() {
   const [notes, setNotes] = useState<PaginatedResponse<NoteInfo> | null>(null);
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -47,7 +48,8 @@ export function VaultDetailPage() {
       setVault(v);
       setNotes(n);
       setActivities(a.items);
-    }).finally(() => setLoading(false));
+    }).catch((err) => setError(err.message || '加载失败'))
+      .finally(() => setLoading(false));
   }, [vaultId]);
 
   const loadPage = (p: number) => {
@@ -63,6 +65,7 @@ export function VaultDetailPage() {
   };
 
   if (loading) return <div className="text-muted-foreground">加载中...</div>;
+  if (error) return <div className="text-destructive">{error}</div>;
   if (!vault) return <div className="text-muted-foreground">Vault 不存在</div>;
 
   return (

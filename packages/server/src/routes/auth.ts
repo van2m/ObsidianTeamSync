@@ -31,40 +31,54 @@ router.post('/register', async (req: Request, res: Response) => {
 
   const { email, name, password } = parsed.data;
 
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
-    res.status(409).json({ code: 409, status: false, message: 'Email already registered' });
-    return;
-  }
-
   const hashedPassword = await bcrypt.hash(password, 12);
-  const user = await prisma.user.create({
-    data: { email, name, password: hashedPassword },
-  });
 
-  // Auto-create personal vault / 自动创建个人 Vault
-  await prisma.vault.create({
-    data: {
-      name: `${name}'s Vault`,
-      type: 'PERSONAL',
-      ownerId: user.id,
-    },
-  });
+  try {
+    // Use transaction to ensure user + vault are created atomically
+    const user = await prisma.$transaction(async (tx) => {
+      const existing = await tx.user.findUnique({ where: { email } });
+      if (existing) throw new Error('EMAIL_EXISTS');
 
-  const tokenPayload: AuthTokenPayload = { userId: user.id, email: user.email, name: user.name };
-  const token = jwt.sign(tokenPayload, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
+      const newUser = await tx.user.create({
+        data: { email, name, password: hashedPassword },
+      });
 
-  const response: AuthResponse = {
-    token,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      avatar: user.avatar ?? undefined,
-      createdAt: user.createdAt.toISOString(),
-    },
-  };
-  res.json({ code: 0, status: true, message: 'ok', data: response });
+      // Auto-create personal vault / 自动创建个人 Vault
+      await tx.vault.create({
+        data: {
+          name: `${name}'s Vault`,
+          type: 'PERSONAL',
+          ownerId: newUser.id,
+        },
+      });
+
+      return newUser;
+    });
+
+    const tokenPayload: AuthTokenPayload = { userId: user.id, email: user.email, name: user.name };
+    const token = jwt.sign(tokenPayload, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
+
+    const response: AuthResponse = {
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar ?? undefined,
+        createdAt: user.createdAt.toISOString(),
+      },
+    };
+    res.json({ code: 0, status: true, message: 'ok', data: response });
+  } catch (err: any) {
+    if (err.message === 'EMAIL_EXISTS') {
+      res.status(409).json({ code: 409, status: false, message: 'Email already registered' });
+    } else if (err.code === 'P2002') {
+      res.status(409).json({ code: 409, status: false, message: 'Email already registered' });
+    } else {
+      console.error('Register error:', err);
+      res.status(500).json({ code: 500, status: false, message: 'Registration failed' });
+    }
+  }
 });
 
 /** POST /api/auth/login - Login / 登录 */
