@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "webgui",
+      "runtimeExecutable": "/usr/local/bin/node",
+      "runtimeArgs": ["../../node_modules/.pnpm/vite@6.4.2_@types+node@22.19.17_jiti@1.21.7_sass@1.99.0_tsx@4.21.0/node_modules/vite/bin/vite.js", "--port", "5170"],
+      "port": 5170,
+      "cwd": "packages/webgui"
+    }
+  ]
+}

@@ -1,0 +1,171 @@
+// ObsidianTeamSync - Database Schema
+// OTS 数据库模型定义
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== User / 用户 ====================
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  avatar    String?
+  password  String   // bcrypt hash
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teamMembers   TeamMember[]
+  ownedVaults   Vault[]        @relation("VaultOwner")
+  editedNotes   Note[]         @relation("NoteLastEditor")
+  noteHistories NoteHistory[]
+  comments      Comment[]
+  activities    Activity[]     @relation("ActivityUser")
+}
+
+// ==================== Team / 团队 ====================
+
+model Team {
+  id         String   @id @default(uuid())
+  name       String
+  inviteCode String   @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  members TeamMember[]
+  vaults  Vault[]
+}
+
+model TeamMember {
+  id       String   @id @default(uuid())
+  role     String   @default("EDITOR") // OWNER, ADMIN, EDITOR, VIEWER
+  joinedAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId String
+
+  @@unique([userId, teamId])
+}
+
+// ==================== Vault ====================
+
+model Vault {
+  id        String   @id @default(uuid())
+  name      String
+  type      String   @default("PERSONAL") // PERSONAL, TEAM
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team    Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId  String?
+  owner   User   @relation("VaultOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String
+
+  notes      Note[]
+  files      File[]
+  activities Activity[]
+}
+
+// ==================== Note / 笔记 ====================
+
+model Note {
+  id       String  @id @default(uuid())
+  path     String  // Relative path / 相对路径
+  pathHash String  // FNV-1a hash for fast lookup
+  markdown String? // Latest markdown snapshot / 最新 Markdown 快照
+  yjsState Bytes?  // Yjs document state (binary) / Yjs 文档状态
+  mtime    BigInt  // Modification timestamp (ms) / 修改时间戳
+  ctime    BigInt  // Creation timestamp (ms) / 创建时间戳
+  size     Int     @default(0)
+  deleted  Boolean @default(false)
+
+  vault        Vault @relation(fields: [vaultId], references: [id], onDelete: Cascade)
+  vaultId      String
+  lastEditor   User  @relation("NoteLastEditor", fields: [lastEditorId], references: [id])
+  lastEditorId String
+
+  history  NoteHistory[]
+  comments Comment[]
+
+  @@unique([vaultId, pathHash])
+  @@index([vaultId, deleted])
+  @@index([vaultId, mtime])
+}
+
+// ==================== Note History / 笔记历史 ====================
+
+model NoteHistory {
+  id        String   @id @default(uuid())
+  markdown  String   // Markdown snapshot at this point
+  yjsState  Bytes?   // Yjs state snapshot
+  createdAt DateTime @default(now())
+
+  note     Note   @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  noteId   String
+  editor   User   @relation(fields: [editorId], references: [id])
+  editorId String
+
+  @@index([noteId, createdAt])
+}
+
+// ==================== File / 附件 ====================
+
+model File {
+  id        String   @id @default(uuid())
+  path      String   // Relative path
+  pathHash  String
+  size      Int
+  mimeType  String?
+  mtime     BigInt
+  ctime     BigInt
+  deleted   Boolean  @default(false)
+  storageKey String? // Key in object storage
+
+  vault   Vault  @relation(fields: [vaultId], references: [id], onDelete: Cascade)
+  vaultId String
+
+  @@unique([vaultId, pathHash])
+  @@index([vaultId, deleted])
+}
+
+// ==================== Comment / 评论 ====================
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String
+  line      Int?     // Line number for inline comments / 行级评论行号
+  resolved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  note     Note   @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  noteId   String
+  author   User   @relation(fields: [authorId], references: [id])
+  authorId String
+
+  @@index([noteId])
+}
+
+// ==================== Activity / 活动记录 ====================
+
+model Activity {
+  id        String   @id @default(uuid())
+  type      String   // note.created, note.updated, member.joined, etc.
+  metadata  String   @default("{}") // JSON metadata
+  createdAt DateTime @default(now())
+
+  user    User   @relation("ActivityUser", fields: [userId], references: [id])
+  userId  String
+  vault   Vault  @relation(fields: [vaultId], references: [id], onDelete: Cascade)
+  vaultId String
+
+  @@index([vaultId, createdAt])
+}

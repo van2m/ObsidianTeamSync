@@ -1,0 +1,25 @@
+{
+  "name": "@ots/obsidian-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ObsidianTeamSync - Team collaboration sync plugin for Obsidian",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production"
+  },
+  "dependencies": {
+    "@ots/shared": "workspace:*",
+    "obsidian": "^1.7.2",
+    "yjs": "^13.6.0",
+    "y-codemirror.next": "^0.3.5",
+    "y-protocols": "^1.0.6",
+    "lib0": "^0.2.98"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "builtin-modules": "^4.0.0",
+    "esbuild": "^0.24.0",
+    "esbuild-scss-modules-plugin": "^1.1.1",
+    "typescript": "^5.5.0"
+  }
+}

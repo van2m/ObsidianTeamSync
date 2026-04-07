@@ -1,0 +1,31 @@
+{
+  "name": "obsidian-team-sync",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Obsidian Team Sync - Collaborative note synchronization for teams",
+  "scripts": {
+    "dev:server": "pnpm --filter @ots/server dev",
+    "dev:plugin": "pnpm --filter @ots/obsidian-plugin dev",
+    "dev:webgui": "pnpm --filter @ots/webgui dev",
+    "build:server": "pnpm --filter @ots/server build",
+    "build:plugin": "pnpm --filter @ots/obsidian-plugin build",
+    "build:webgui": "pnpm --filter @ots/webgui build",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "db:push": "pnpm --filter @ots/server db:push",
+    "db:migrate": "pnpm --filter @ots/server db:migrate"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma"
+    ]
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

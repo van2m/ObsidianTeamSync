@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-team-sync",
+  "name": "ObsidianTeamSync",
+  "version": "0.1.0",
+  "minAppVersion": "1.6.5",
+  "description": "Team collaboration sync plugin - share knowledge bases, real-time collaborative editing with CRDT",
+  "author": "ObsidianTeamSync",
+  "isDesktopOnly": false
+}

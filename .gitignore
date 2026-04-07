@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tgz
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Prisma
+packages/server/prisma/*.db
+packages/server/prisma/*.db-journal
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+Thumbs.db
+
+# Test
+coverage/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# MCP config (may contain local paths)
+.mcp.json
+
+# TypeScript build info
+*.tsbuildinfo
