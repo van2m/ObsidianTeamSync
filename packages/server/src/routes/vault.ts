@@ -182,6 +182,10 @@ router.delete('/:vaultId', async (req: Request, res: Response) => {
     }
   }
 
+  // Destroy active Yjs rooms before deleting vault
+  const { destroyRoomsByVault } = await import('../collab/room-manager.js');
+  await destroyRoomsByVault(vaultId);
+
   await prisma.vault.delete({ where: { id: vaultId } });
   res.json({ code: 0, status: true, message: 'ok' });
 });

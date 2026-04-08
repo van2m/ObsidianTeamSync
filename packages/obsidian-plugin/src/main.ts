@@ -20,6 +20,7 @@ export default class ObsidianTeamSyncPlugin extends Plugin {
   vaultWatcher: VaultWatcher | null = null;
   collabManager: CollabManager | null = null;
   private collabCompartment = new Compartment();
+  private suppressTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   async onload() {
     console.log('[OTS] Loading ObsidianTeamSync plugin');
@@ -210,8 +211,14 @@ export default class ObsidianTeamSyncPlugin extends Plugin {
     } catch (err) {
       console.error('[OTS] Failed to apply remote change:', data.path, err);
     } finally {
-      // Delay unsuppress to let Obsidian events settle / 延迟取消抑制
-      setTimeout(() => this.vaultWatcher?.unsuppressPath(data.path), 1000);
+      // Cancel previous unsuppress timer for same path to prevent early unsuppress
+      const existingTimer = this.suppressTimers.get(data.path);
+      if (existingTimer) clearTimeout(existingTimer);
+      const timer = setTimeout(() => {
+        this.vaultWatcher?.unsuppressPath(data.path);
+        this.suppressTimers.delete(data.path);
+      }, 1000);
+      this.suppressTimers.set(data.path, timer);
     }
   }
 

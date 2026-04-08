@@ -54,7 +54,7 @@ router.get('/vaults/:vaultId/notes', requireVaultRole(Role.VIEWER), async (req: 
         ctime: Number(n.ctime),
         size: n.size,
         lastEditorId: n.lastEditorId,
-        lastEditorName: n.lastEditor.name,
+        lastEditorName: n.lastEditor?.name ?? 'Unknown',
       })),
       total,
       page,
@@ -152,18 +152,27 @@ router.post('/vaults/:vaultId/notes', requireVaultRole(Role.EDITOR), async (req:
   const now = BigInt(Date.now());
   const content = markdown ?? '';
 
-  const note = await prisma.note.create({
-    data: {
-      path: notePath,
-      pathHash: hash,
-      markdown: content,
-      mtime: now,
-      ctime: now,
-      size: Buffer.byteLength(content, 'utf8'),
-      vaultId,
-      lastEditorId: userId,
-    },
-  });
+  let note;
+  try {
+    note = await prisma.note.create({
+      data: {
+        path: notePath,
+        pathHash: hash,
+        markdown: content,
+        mtime: now,
+        ctime: now,
+        size: Buffer.byteLength(content, 'utf8'),
+        vaultId,
+        lastEditorId: userId,
+      },
+    });
+  } catch (err: any) {
+    if (err.code === 'P2002') {
+      res.status(409).json({ code: 409, status: false, message: '同路径笔记已存在' });
+      return;
+    }
+    throw err;
+  }
 
   res.json({
     code: 0,

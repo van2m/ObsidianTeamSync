@@ -56,7 +56,7 @@ export class SyncEngine {
   /** Connect to sync server / 连接同步服务器 */
   connect() {
     if (this.isDestroyed) return;
-    if (this.ws?.readyState === WebSocket.OPEN) return;
+    if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) return;
 
     const wsUrl = this.config.serverUrl.replace(/^http/, 'ws') + '/api/sync';
     this.ws = new WebSocket(wsUrl);

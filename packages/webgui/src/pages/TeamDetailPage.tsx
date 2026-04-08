@@ -55,8 +55,12 @@ export function TeamDetailPage() {
 
   const handleInvite = async () => {
     if (!teamId) return;
-    const res = await teamsApi.invite(teamId);
-    setInviteCode(res.inviteCode);
+    try {
+      const res = await teamsApi.invite(teamId);
+      setInviteCode(res.inviteCode);
+    } catch (err: any) {
+      console.error('获取邀请码失败:', err);
+    }
   };
 
   const handleCopy = () => {
@@ -78,8 +82,12 @@ export function TeamDetailPage() {
 
   const handleChangeRole = async (memberId: string, role: Role) => {
     if (!teamId) return;
-    await teamsApi.updateMemberRole(teamId, memberId, { role });
-    loadTeam();
+    try {
+      await teamsApi.updateMemberRole(teamId, memberId, { role });
+      loadTeam();
+    } catch (err: any) {
+      console.error('更改角色失败:', err);
+    }
   };
 
   if (loading) return <div className="text-muted-foreground">加载中...</div>;

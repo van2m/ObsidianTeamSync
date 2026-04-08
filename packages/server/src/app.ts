@@ -77,7 +77,7 @@ async function shutdown() {
   console.log('\n🛑 Shutting down...');
   await persistAllRooms();
   await prisma.$disconnect();
-  server.close();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   process.exit(0);
 }
 process.on('SIGINT', shutdown);

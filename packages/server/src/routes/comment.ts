@@ -11,21 +11,25 @@ const router = Router();
 // All comment routes require authentication
 router.use(authMiddleware);
 
-/** Helper: verify user has access to the vault containing a comment */
-async function verifyCommentVaultAccess(userId: string, comment: { noteId: string; note: { vaultId: string } }): Promise<boolean> {
+/** Helper: verify user has access to vault and return their role */
+async function getCommentVaultRole(userId: string, comment: { noteId: string; note: { vaultId: string } }): Promise<string | null> {
   const vault = await prisma.vault.findUnique({
     where: { id: comment.note.vaultId },
     select: { type: true, ownerId: true, teamId: true },
   });
-  if (!vault) return false;
-  if (vault.type === 'PERSONAL') return vault.ownerId === userId;
+  if (!vault) return null;
+  if (vault.type === 'PERSONAL') return vault.ownerId === userId ? 'OWNER' : null;
   if (vault.teamId) {
     const member = await prisma.teamMember.findUnique({
       where: { userId_teamId: { userId, teamId: vault.teamId } },
     });
-    return !!member;
+    return member?.role ?? null;
   }
-  return false;
+  return null;
+}
+
+function isAdminRole(role: string | null): boolean {
+  return role === 'OWNER' || role === 'ADMIN';
 }
 
 /** POST /api/notes/:noteId/comments — Create comment */
@@ -42,10 +46,13 @@ router.post('/notes/:noteId/comments', requireNoteRole(Role.VIEWER), async (req,
       return res.status(400).json({ code: 400, status: false, message: 'Content too long (max 10000 chars)' });
     }
 
+    // 校验 line 为正整数
+    const validLine = (line != null && Number.isInteger(line) && line >= 1) ? line : null;
+
     const comment = await prisma.comment.create({
       data: {
         content: content.trim(),
-        line: line ?? null,
+        line: validLine,
         noteId,
         authorId: userId,
       },
@@ -169,11 +176,12 @@ router.put('/comments/:commentId', async (req, res) => {
       return res.status(404).json({ code: 404, status: false, message: 'Comment not found' });
     }
     // Verify vault access
-    if (!await verifyCommentVaultAccess(userId, comment)) {
+    const role = await getCommentVaultRole(userId, comment);
+    if (!role) {
       return res.status(403).json({ code: 403, status: false, message: 'Access denied' });
     }
-    if (comment.authorId !== userId) {
-      return res.status(403).json({ code: 403, status: false, message: 'Only the author can edit' });
+    if (comment.authorId !== userId && !isAdminRole(role)) {
+      return res.status(403).json({ code: 403, status: false, message: '仅作者或管理员可操作' });
     }
 
     const updated = await prisma.comment.update({
@@ -235,7 +243,8 @@ router.patch('/comments/:commentId/resolve', async (req, res) => {
     if (!comment) {
       return res.status(404).json({ code: 404, status: false, message: 'Comment not found' });
     }
-    if (!await verifyCommentVaultAccess(userId, comment)) {
+    const role = await getCommentVaultRole(userId, comment);
+    if (!role) {
       return res.status(403).json({ code: 403, status: false, message: 'Access denied' });
     }
 
@@ -305,11 +314,12 @@ router.delete('/comments/:commentId', async (req, res) => {
     if (!comment) {
       return res.status(404).json({ code: 404, status: false, message: 'Comment not found' });
     }
-    if (!await verifyCommentVaultAccess(userId, comment)) {
+    const role = await getCommentVaultRole(userId, comment);
+    if (!role) {
       return res.status(403).json({ code: 403, status: false, message: 'Access denied' });
     }
-    if (comment.authorId !== userId) {
-      return res.status(403).json({ code: 403, status: false, message: 'Only the author can delete' });
+    if (comment.authorId !== userId && !isAdminRole(role)) {
+      return res.status(403).json({ code: 403, status: false, message: '仅作者或管理员可操作' });
     }
 
     await prisma.comment.delete({ where: { id: commentId } });

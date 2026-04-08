@@ -66,7 +66,7 @@ router.get('/', async (req: Request, res: Response) => {
   const teams = memberships.map((m) => ({
     id: m.team.id,
     name: m.team.name,
-    inviteCode: m.team.inviteCode,
+    inviteCode: ['OWNER', 'ADMIN'].includes(m.role) ? m.team.inviteCode : undefined,
     myRole: m.role,
     createdAt: m.team.createdAt.toISOString(),
     memberCount: m.team._count.members,
@@ -111,7 +111,7 @@ router.get('/:teamId', async (req: Request, res: Response) => {
       team: {
         id: team.id,
         name: team.name,
-        inviteCode: team.inviteCode,
+        inviteCode: ['OWNER', 'ADMIN'].includes(member.role) ? team.inviteCode : undefined,
         createdAt: team.createdAt.toISOString(),
         memberCount: team.members.length,
       },
@@ -257,6 +257,11 @@ router.delete('/:teamId/members/:memberId', async (req: Request, res: Response) 
 
   if (target.role === Role.OWNER) {
     res.status(403).json({ code: 403, status: false, message: 'Cannot remove team owner' });
+    return;
+  }
+
+  if (requester.role === 'ADMIN' && target.role === 'ADMIN') {
+    res.status(403).json({ code: 403, status: false, message: 'ADMIN cannot remove other ADMINs' });
     return;
   }
 

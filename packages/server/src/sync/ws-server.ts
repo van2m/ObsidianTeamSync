@@ -208,11 +208,15 @@ async function handleAuth(
       data: { userId: ws.userId, userName: ws.userName },
     }, ws);
   } catch {
-    ws.send(encodeSyncMessage({
-      action: SyncAction.AuthResult,
-      data: { code: SyncStatusCode.AuthFailed, status: false, message: 'Auth failed' },
-    }));
-    ws.close();
+    try {
+      if (ws.readyState === 1) {
+        ws.send(encodeSyncMessage({
+          action: SyncAction.AuthResult,
+          data: { code: SyncStatusCode.AuthFailed, status: false, message: 'Auth failed' },
+        }));
+        ws.close();
+      }
+    } catch { /* ignore */ }
   }
 }
 
@@ -294,7 +298,7 @@ async function handleNoteModify(ws: AuthenticatedSocket, msg: SyncMessage) {
     // Check inside lock to prevent race
     if (getRoomByKey(roomKey)) return; // Yjs room active, skip
 
-    const now = BigInt(mtime || Date.now());
+    const now = BigInt(Date.now()); // Always use server time, don't trust client mtime
 
     const note = await prisma.note.upsert({
       where: { vaultId_pathHash: { vaultId, pathHash: hash } },
@@ -346,18 +350,31 @@ async function handleNoteDelete(ws: AuthenticatedSocket, msg: SyncMessage) {
   if (!ws.vaultId || !ws.userId) return;
 
   const { path: notePath } = msg.data as { path: string };
+  if (typeof notePath !== 'string') return;
+
   const hash = pathHash(notePath);
-  const now = BigInt(Date.now());
+  const vaultId = ws.vaultId;
+  const roomKey = `${vaultId}:${hash}`;
 
-  await prisma.note.updateMany({
-    where: { vaultId: ws.vaultId, pathHash: hash },
-    data: { deleted: true, mtime: now },
+  // Use lock to prevent race with Yjs room operations
+  await withNoteLock(roomKey, async () => {
+    // Destroy active Yjs room before deleting
+    const { forceDestroyRoom } = await import('../collab/room-manager.js');
+    if (getRoomByKey(roomKey)) {
+      await forceDestroyRoom(roomKey);
+    }
+
+    const now = BigInt(Date.now());
+    await prisma.note.updateMany({
+      where: { vaultId, pathHash: hash },
+      data: { deleted: true, mtime: now },
+    });
+
+    broadcastToVault(vaultId, {
+      action: SyncAction.NoteSyncDelete,
+      data: { path: notePath, pathHash: hash, mtime: Number(now) },
+    }, ws);
   });
-
-  broadcastToVault(ws.vaultId, {
-    action: SyncAction.NoteSyncDelete,
-    data: { path: notePath, pathHash: hash, mtime: Number(now) },
-  }, ws);
 }
 
 /** Broadcast message to all connections in a vault / 向 Vault 内所有连接广播消息 */

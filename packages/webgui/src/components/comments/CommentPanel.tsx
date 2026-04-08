@@ -12,19 +12,19 @@ interface CommentPanelProps {
 }
 
 export function CommentPanel({ noteId }: CommentPanelProps) {
-  const [comments, setComments] = useState<CommentInfo[]>([]);
+  const [allComments, setAllComments] = useState<CommentInfo[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
   const [loading, setLoading] = useState(true);
 
   const loadComments = () => {
-    const resolved = filter === 'open' ? false : filter === 'resolved' ? true : undefined;
-    commentsApi.list(noteId, resolved).then(setComments).finally(() => setLoading(false));
+    // 始终获取全部评论，前端做筛选，保证计数准确
+    commentsApi.list(noteId).then(setAllComments).finally(() => setLoading(false));
   };
 
   useEffect(() => {
     setLoading(true);
     loadComments();
-  }, [noteId, filter]);
+  }, [noteId]);
 
   const handleCreate = async (content: string, line?: number) => {
     await commentsApi.create(noteId, { content, line });
@@ -41,7 +41,11 @@ export function CommentPanel({ noteId }: CommentPanelProps) {
     loadComments();
   };
 
-  const openCount = comments.filter((c) => !c.resolved).length;
+  const openCount = allComments.filter((c) => !c.resolved).length;
+  const resolvedCount = allComments.length - openCount;
+  const comments = filter === 'open' ? allComments.filter((c) => !c.resolved)
+    : filter === 'resolved' ? allComments.filter((c) => c.resolved)
+    : allComments;
 
   return (
     <div className="space-y-3">
@@ -53,7 +57,7 @@ export function CommentPanel({ noteId }: CommentPanelProps) {
             size="sm"
             onClick={() => setFilter(f)}
           >
-            {f === 'all' ? `全部 (${comments.length})` : f === 'open' ? `未解决 (${openCount})` : `已解决 (${comments.length - openCount})`}
+            {f === 'all' ? `全部 (${allComments.length})` : f === 'open' ? `未解决 (${openCount})` : `已解决 (${resolvedCount})`}
           </Button>
         ))}
       </div>

@@ -41,8 +41,10 @@ let periodicTimer: ReturnType<typeof setInterval> | null = null;
 function startPeriodicPersist() {
   if (periodicTimer) return;
   periodicTimer = setInterval(async () => {
-    for (const [key, room] of activeRooms) {
-      if (room.dirty) {
+    const keys = Array.from(activeRooms.keys());
+    for (const key of keys) {
+      const room = activeRooms.get(key);
+      if (room?.dirty) {
         await persistRoom(key);
       }
     }
@@ -166,8 +168,16 @@ export function removeClientFromRoom(room: CollabRoom, ws: AuthenticatedSocket):
   // Schedule room destruction if empty
   if (room.clients.size === 0) {
     room.destroyTimer = setTimeout(async () => {
-      await persistRoom(room.roomKey);
-      destroyRoom(room.roomKey);
+      room.destroyTimer = null;
+      try {
+        await persistRoom(room.roomKey);
+      } catch (err) {
+        console.error('Persist before destroy failed:', err);
+      }
+      // Re-check: new clients may have joined during persist await
+      if (room.clients.size === 0) {
+        destroyRoom(room.roomKey);
+      }
     }, DESTROY_DELAY_MS);
   }
 }
@@ -246,6 +256,17 @@ export async function forceDestroyRoom(roomKey: string): Promise<void> {
 
   // Don't persist — the rollback already wrote correct content
   destroyRoom(roomKey);
+}
+
+/** Destroy all rooms belonging to a vault (used when vault is deleted) */
+export async function destroyRoomsByVault(vaultId: string): Promise<void> {
+  const keysToDestroy: string[] = [];
+  for (const [key, room] of activeRooms) {
+    if (room.vaultId === vaultId) keysToDestroy.push(key);
+  }
+  for (const key of keysToDestroy) {
+    await forceDestroyRoom(key);
+  }
 }
 
 /** Destroy a room and release resources */

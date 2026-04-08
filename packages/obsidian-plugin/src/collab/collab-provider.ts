@@ -102,11 +102,15 @@ export class OTSCollabProvider {
     }
   }
 
-  /** Send RoomLeave and clean up */
+  /** Clean up and send RoomLeave */
   destroy(): void {
-    this.sendBinary(encodeCollabMessage(CollabMsgType.RoomLeave, this.pathHash));
+    // Remove listeners FIRST to prevent stale updates during teardown
     this.doc.off('update', this.updateHandler);
     this.awareness.off('update', this.awarenessHandler);
+    // Then send RoomLeave
+    try {
+      this.sendBinary(encodeCollabMessage(CollabMsgType.RoomLeave, this.pathHash));
+    } catch { /* ignore if WS disconnected */ }
     awarenessProtocol.removeAwarenessStates(
       this.awareness,
       [this.doc.clientID],

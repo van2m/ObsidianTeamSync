@@ -60,8 +60,12 @@ export function VaultDetailPage() {
 
   const handleDelete = async () => {
     if (!vaultId || !confirm('确定要删除这个 Vault 吗？此操作不可撤销。')) return;
-    await vaultsApi.delete(vaultId);
-    navigate('/vaults');
+    try {
+      await vaultsApi.delete(vaultId);
+      navigate('/vaults');
+    } catch (err: any) {
+      setError(err.message || '删除失败');
+    }
   };
 
   if (loading) return <div className="text-muted-foreground">加载中...</div>;
